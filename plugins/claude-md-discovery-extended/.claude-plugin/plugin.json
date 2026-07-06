@@ -1,7 +1,7 @@
 {
   "name": "claude-md-discovery-extended",
-  "description": "Auto-discovers and loads CLAUDE.md files from any directory outside your project tree when the model accesses files there. Fills the gap where Claude Code only loads CLAUDE.md from ancestor directories (at startup) and child directories (on demand).",
-  "version": "0.2.1",
+  "description": "Auto-discovers CLAUDE.md/AGENTS.md files from directories outside your project tree when the model accesses files there. Deduplicates by content hash so git worktrees, extra clones, and copied templates never re-flag known instructions, and nudges a re-read when a loaded instruction file changes on disk.",
+  "version": "0.3.0",
   "author": {
     "name": "Spencer Presley"
   }

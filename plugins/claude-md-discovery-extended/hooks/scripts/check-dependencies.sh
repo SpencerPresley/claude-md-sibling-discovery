@@ -2,27 +2,14 @@
 # Warn once at session start if required dependencies are not installed.
 set -Eeuo pipefail
 
-missing=()
-
-if ! command -v jq &>/dev/null; then
-  missing+=("jq")
-fi
-
-if ! command -v python3 &>/dev/null; then
-  missing+=("python3")
-fi
-
-[[ ${#missing[@]} -eq 0 ]] && exit 0
+command -v python3 &>/dev/null && exit 0
 
 {
   printf '<claude-md-discovery-extended>\n'
-  printf 'The claude-md-discovery-extended plugin requires the following but they are not installed:\n'
-  for dep in "${missing[@]}"; do
-    printf '  - %s\n' "${dep}"
-  done
-  printf 'The plugin will not function until these are available.\n'
-  printf 'Install: brew install jq (macOS) or apt-get install jq (Linux)\n'
+  printf 'The claude-md-discovery-extended plugin requires python3 but it is not installed.\n'
+  printf 'The plugin will not function until it is available.\n'
   printf 'Python 3 is typically pre-installed on macOS and most Linux distributions.\n'
+  printf 'Install: brew install python3 (macOS) or apt-get install python3 (Linux)\n'
   printf '</claude-md-discovery-extended>\n'
 } >&2
 exit 2

@@ -1,7 +1,7 @@
 [project]
 name = "claude-md-discovery-extended"
-version = "0.2.1"
-description = "Extends CLAUDE.md auto-discovery to directories outside the project tree"
+version = "0.3.0"
+description = "Extends CLAUDE.md auto-discovery to directories outside the project tree, with content-hash deduplication and change detection"
 requires-python = ">=3.10"
 dependencies = []
 
