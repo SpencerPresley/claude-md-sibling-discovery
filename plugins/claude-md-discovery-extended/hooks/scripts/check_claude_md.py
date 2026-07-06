@@ -479,6 +479,9 @@ def _main(data: dict) -> None:
     session_id: str = data.get("session_id", "")
     cwd: str = data.get("cwd", "")
     tool_input: dict = data.get("tool_input", {})
+    # Subagent tool calls carry an agent id; their transcript is separate
+    # from the main agent's, so flagged knowledge is scoped to it.
+    scope: str = data.get("agent_id") or ""
 
     if not tool_name or not session_id or not cwd:
         sys.exit(0)
@@ -486,7 +489,7 @@ def _main(data: dict) -> None:
     # Canonicalize to resolve symlinks and ".." components
     cwd = os.path.realpath(cwd).rstrip("/") or "/"
 
-    ledger = Ledger(session_id)
+    ledger = Ledger(session_id, scope)
     if not ledger.seeded:
         # Normally done by the SessionStart hook; cover sessions where it
         # didn't run (e.g. the plugin was enabled mid-session).
@@ -521,7 +524,7 @@ def _main(data: dict) -> None:
     for candidate, matched in suppressed:
         log_event(
             session_id, "suppress",
-            path=candidate, matched=matched, tool=tool_name,
+            path=candidate, matched=matched, tool=tool_name, agent=scope,
         )
 
     if not new and not changed:
@@ -530,6 +533,7 @@ def _main(data: dict) -> None:
     log_event(
         session_id, "flag",
         tool=tool_name, target=directory or "", new=new, changed=changed,
+        agent=scope,
     )
     print(build_message(new, changed), file=sys.stderr)
     sys.exit(2)

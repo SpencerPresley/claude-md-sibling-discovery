@@ -1,7 +1,7 @@
 {
   "name": "claude-md-discovery-extended",
   "description": "Auto-discovers CLAUDE.md/AGENTS.md files from directories outside your project tree when the model accesses files there. Deduplicates by content hash so git worktrees, extra clones, and copied templates never re-flag known instructions, and nudges a re-read when a loaded instruction file changes on disk.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "author": {
     "name": "Spencer Presley"
   }

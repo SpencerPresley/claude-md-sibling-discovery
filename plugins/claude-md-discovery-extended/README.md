@@ -72,6 +72,12 @@ When the model accesses a path outside the project tree, the plugin walks up the
 
 Claude Code loads memory files once and never reloads them mid-session. The plugin tracks content hashes, so when a previously-loaded instruction file changes on disk — you edited the project `CLAUDE.md` while the model worked — the model gets a single nudge to re-read it. Changes the model itself makes via `Write`/`Edit` don't trigger the nudge (that content is already in its context). An ancestor `CLAUDE.md` created after session start (which the startup walk never saw) is flagged as a fresh discovery.
 
+Detection runs at two trigger points: on every tool call (for the paths being touched, plus the ancestor chain), and at each **turn boundary** via a `UserPromptSubmit` hook — so an edit made while the model idled is caught even when the next turn involves no tool calls. The turn-boundary check covers ancestors, the global memory, and in-project files already loaded; outside-the-project files are only re-checked when the model actually touches their tree again.
+
+### Subagents
+
+Subagent tool calls fire the same hooks with an `agent_id` in the hook input, and a subagent's transcript is a separate context from the main agent's. The ledger accounts for this: disk-derived knowledge (ancestors, the project scan, hash equivalence) is session-global, but *transcript-carried* knowledge — files the plugin flagged or the model read directly — is scoped per agent. A CLAUDE.md discovered inside a subagent nudges that subagent, and does not suppress the discovery for the main agent (or other subagents), which never saw it. Known limitation: the built-in Explore/Plan agents skip CLAUDE.md loading entirely, and the plugin doesn't special-case them.
+
 ### Context lifecycle awareness
 
 - **`/clear`** wipes the context, so the session ledger is reset and discovery starts fresh.
@@ -84,9 +90,10 @@ Claude Code does **not** natively load `AGENTS.md`. For directories outside the 
 
 ### Hooks
 
-Three [hooks](https://code.claude.com/docs/en/hooks):
+Four [hooks](https://code.claude.com/docs/en/hooks):
 
 - **PostToolUse** (matcher: `Read|Glob|Grep|Edit|Write|Bash`): updates the ledger and reports new or changed instruction files. For the Bash tool, paths are extracted from the command string using `shlex` tokenization.
+- **UserPromptSubmit**: turn-boundary staleness check — re-hashes loaded instruction files and injects a re-read nudge (as context, never blocking the prompt) when something changed while the model idled.
 - **SessionStart**: verifies `python3` is available, seeds the ledger (ancestors, global memory, project scan), handles `/clear` and compaction, and garbage-collects stale state.
 - **SessionEnd**: deletes the ledger on `/clear`; keeps it otherwise so resumed sessions don't re-flag.
 

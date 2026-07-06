@@ -12,7 +12,11 @@ Ledger entry kinds:
       files loaded on demand as the model accesses them).
     - ``flagged``: content entered context through the transcript (the
       plugin flagged it, or the model read/cat'd it directly). These are
-      dropped after compaction because the transcript no longer carries them.
+      dropped after compaction because the transcript no longer carries
+      them. Flagged entries are scoped per agent: a subagent's tool calls
+      fire the same hooks with an ``agent_id``, and a file flagged inside
+      a subagent's transcript is not in the main agent's context (or any
+      other agent's), so it must not suppress discovery there.
     - ``equiv``: content exists inside the project tree (found by the
       session-start scan) but has not necessarily been loaded. Used only to
       suppress byte-identical copies outside the project.
@@ -244,21 +248,23 @@ def hash_file(path: str) -> str | None:
         return None
 
 
-def load_ledger(path: str) -> tuple[dict[str, dict], bool]:
-    """Load a ledger file into a path-keyed mapping.
+def load_ledger(path: str) -> tuple[dict[str, dict], dict[tuple[str, str], str], bool]:
+    """Load a ledger file into its global and per-agent mappings.
 
-    Later lines win for the same path, so appends act as updates.
+    Later lines win for the same key, so appends act as updates.
     Malformed lines (e.g. a torn concurrent write) are skipped.
 
     Args:
         path (str): Ledger file path.
 
     Returns:
-        tuple[dict[str, dict], bool]: Mapping of file path to
-            `{"h": hash, "k": kind}`, and whether the session has
-            been seeded.
+        tuple: `(entries, flagged, seeded)` — global path-keyed mapping of
+            `{"h": hash, "k": kind}` for ``context``/``equiv`` entries,
+            `(path, agent_scope)`-keyed hash mapping for ``flagged``
+            entries, and whether the session has been seeded.
     """
     entries: dict[str, dict] = {}
+    flagged: dict[tuple[str, str], str] = {}
     seeded = False
     try:
         with open(path, "r") as fh:
@@ -276,11 +282,15 @@ def load_ledger(path: str) -> tuple[dict[str, dict], bool]:
                     seeded = True
                     continue
                 p, h, k = obj.get("p"), obj.get("h"), obj.get("k")
-                if p and h and k in _KIND_RANK:
+                if not (p and h and k in _KIND_RANK):
+                    continue
+                if k == KIND_FLAGGED:
+                    flagged[(p, obj.get("a") or "")] = h
+                else:
                     entries[p] = {"h": h, "k": k}
     except OSError:
         pass
-    return entries, seeded
+    return entries, flagged, seeded
 
 
 def append_entries(path: str, records: list[dict]) -> None:
@@ -302,12 +312,18 @@ def append_entries(path: str, records: list[dict]) -> None:
     os.chmod(path, 0o600)
 
 
-def rewrite_ledger(path: str, entries: dict[str, dict], seeded: bool) -> None:
-    """Atomically rewrite a ledger from a folded entry mapping.
+def rewrite_ledger(
+    path: str,
+    entries: dict[str, dict],
+    flagged: dict[tuple[str, str], str],
+    seeded: bool,
+) -> None:
+    """Atomically rewrite a ledger from folded mappings.
 
     Args:
         path (str): Ledger file path.
-        entries (dict[str, dict]): Mapping of file path to `{"h", "k"}`.
+        entries (dict[str, dict]): Global mapping of file path to `{"h", "k"}`.
+        flagged (dict[tuple[str, str], str]): Per-agent flagged hashes.
         seeded (bool): Whether to preserve the seeded marker.
     """
     tmp = path + ".tmp"
@@ -317,28 +333,45 @@ def rewrite_ledger(path: str, entries: dict[str, dict], seeded: bool) -> None:
         for p, meta in entries.items():
             record = {"p": p, "h": meta["h"], "k": meta["k"]}
             fh.write(json.dumps(record, separators=(",", ":")) + "\n")
+        for (p, scope), h in flagged.items():
+            record = {"p": p, "h": h, "k": KIND_FLAGGED}
+            if scope:
+                record["a"] = scope
+            fh.write(json.dumps(record, separators=(",", ":")) + "\n")
     os.chmod(tmp, 0o600)
     os.replace(tmp, path)
 
 
 class Ledger:
-    """In-memory view of a session ledger with pending-append buffering."""
+    """In-memory view of a session ledger with pending-append buffering.
 
-    def __init__(self, session_id: str):
+    ``context``/``equiv`` entries are session-global (disk-derived facts).
+    ``flagged`` entries are visible only within the agent scope that
+    recorded them — the main agent uses the empty scope; subagent tool
+    calls carry an `agent_id` in the hook input.
+    """
+
+    def __init__(self, session_id: str, scope: str = ""):
         """Load the ledger for a session.
 
         Args:
             session_id (str): The Claude Code session identifier.
+            scope (str): Agent scope — `""` for the main agent, or the
+                `agent_id` from the hook input for subagent tool calls.
         """
         self.path = ledger_path(session_id)
-        self.entries, self.seeded = load_ledger(self.path)
+        self.scope = scope
+        self.entries, self._flagged, self.seeded = load_ledger(self.path)
         self._pending: list[dict] = []
         self._hashes: set[str] | None = None
 
     def known_hashes(self) -> set[str]:
-        """Return the set of every content hash in the ledger."""
+        """Return every content hash known to the current agent scope."""
         if self._hashes is None:
             self._hashes = {meta["h"] for meta in self.entries.values()}
+            self._hashes.update(
+                h for (_, s), h in self._flagged.items() if s == self.scope
+            )
         return self._hashes
 
     def path_for_hash(self, content_hash: str) -> str | None:
@@ -350,32 +383,69 @@ class Ledger:
         for path, meta in self.entries.items():
             if meta["h"] == content_hash:
                 return path
+        for (path, scope), h in self._flagged.items():
+            if scope == self.scope and h == content_hash:
+                return path
         return None
 
     def get(self, path: str) -> dict | None:
-        """Return the entry for a path, or `None`.
+        """Return the entry for a path as seen by the current agent scope.
+
+        The global entry wins (it always tracks the latest observed disk
+        content); a flagged entry in this scope is the fallback. Another
+        agent's flagged entry is invisible — that content lives in a
+        transcript this agent never saw.
 
         Args:
             path (str): Memory-file path to look up.
         """
-        return self.entries.get(path)
+        entry = self.entries.get(path)
+        if entry is not None:
+            return entry
+        h = self._flagged.get((path, self.scope))
+        if h is not None:
+            return {"h": h, "k": KIND_FLAGGED}
+        return None
 
     def record(self, path: str, content_hash: str, kind: str) -> None:
         """Record a path/hash/kind, buffering an append if it changes state.
 
         No-ops when the ledger already holds the same hash at an equal or
         higher kind rank, so steady-state hook runs append nothing.
+        ``flagged`` records are stored under the current agent scope.
 
         Args:
             path (str): Memory-file path.
             content_hash (str): Content hash of the file.
             kind (str): One of the ledger kinds.
         """
-        existing = self.entries.get(path)
+        existing_global = self.entries.get(path)
+        if kind == KIND_FLAGGED:
+            if existing_global and existing_global["h"] != content_hash:
+                # Keep the global entry tracking latest disk content, or a
+                # stale global hash would re-trigger discovery every run.
+                self.entries[path] = {
+                    "h": content_hash, "k": existing_global["k"],
+                }
+                self._pending.append({
+                    "p": path, "h": content_hash, "k": existing_global["k"],
+                })
+            if existing_global and existing_global["h"] == content_hash:
+                # Content is already covered natively; nothing to scope.
+                return
+            if self._flagged.get((path, self.scope)) != content_hash:
+                self._flagged[(path, self.scope)] = content_hash
+                record = {"p": path, "h": content_hash, "k": kind}
+                if self.scope:
+                    record["a"] = self.scope
+                self._pending.append(record)
+            self.known_hashes().add(content_hash)
+            return
+
         if (
-            existing
-            and existing["h"] == content_hash
-            and _KIND_RANK[existing["k"]] >= _KIND_RANK[kind]
+            existing_global
+            and existing_global["h"] == content_hash
+            and _KIND_RANK[existing_global["k"]] >= _KIND_RANK[kind]
         ):
             return
         self.entries[path] = {"h": content_hash, "k": kind}

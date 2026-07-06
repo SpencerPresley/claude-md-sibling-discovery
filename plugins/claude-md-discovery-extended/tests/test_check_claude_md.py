@@ -20,6 +20,7 @@ SCRIPTS = Path(__file__).resolve().parent.parent / "hooks" / "scripts"
 CHECK_SCRIPT = str(SCRIPTS / "check_claude_md.py")
 SESSION_START = str(SCRIPTS / "session_start.py")
 SESSION_END = str(SCRIPTS / "session_end.py")
+PROMPT_CHECK = str(SCRIPTS / "user_prompt_check.py")
 
 STRIPPED_VARS = (
     "CLAUDE_CONFIG_DIR",
@@ -908,6 +909,183 @@ class TestEdgeCases:
         rc, _, stderr = run_hook(payload, hook_env)
         assert rc == 2
         assert os.path.join(layout["sibling"], "CLAUDE.md") in stderr
+
+
+# ---------------------------------------------------------------------------
+# Subagent scoping
+#
+# Subagent tool calls fire the same hooks with an `agent_id`. Their
+# transcripts are separate contexts: a file flagged inside a subagent must
+# not suppress the main agent (and vice versa), while disk-derived
+# knowledge (ancestors, project scan, hash-equivalence) stays global.
+# ---------------------------------------------------------------------------
+
+class TestSubagentScoping:
+    def _payload(self, sid, cwd, file_path, agent_id=None):
+        payload = build_json(tool="Read", sid=sid, cwd=cwd, file_path=file_path)
+        if agent_id:
+            payload["agent_id"] = agent_id
+        return payload
+
+    def test_subagent_flag_does_not_suppress_main(self, layout, hook_env):
+        sid = next_sid("scope-sub-main")
+        target = os.path.join(layout["sibling"], "file.txt")
+
+        rc, _, _ = run_hook(
+            self._payload(sid, layout["project"], target, agent_id="agent-abc"),
+            hook_env,
+        )
+        assert rc == 2  # subagent gets its flag
+
+        rc, _, stderr = run_hook(
+            self._payload(sid, layout["project"], target), hook_env,
+        )
+        assert rc == 2  # main agent never saw it — flags again
+        assert os.path.join(layout["sibling"], "CLAUDE.md") in stderr
+
+        rc, _, _ = run_hook(
+            self._payload(sid, layout["project"], target), hook_env,
+        )
+        assert rc == 0  # main is now covered
+
+    def test_main_flag_does_not_suppress_subagent(self, layout, hook_env):
+        sid = next_sid("scope-main-sub")
+        target = os.path.join(layout["sibling"], "file.txt")
+
+        rc, _, _ = run_hook(self._payload(sid, layout["project"], target), hook_env)
+        assert rc == 2
+
+        rc, _, _ = run_hook(
+            self._payload(sid, layout["project"], target, agent_id="agent-abc"),
+            hook_env,
+        )
+        assert rc == 2
+
+        rc, _, _ = run_hook(
+            self._payload(sid, layout["project"], target, agent_id="agent-abc"),
+            hook_env,
+        )
+        assert rc == 0
+
+    def test_scopes_are_per_agent(self, layout, hook_env):
+        sid = next_sid("scope-two-subs")
+        target = os.path.join(layout["sibling"], "file.txt")
+
+        rc, _, _ = run_hook(
+            self._payload(sid, layout["project"], target, agent_id="agent-1"),
+            hook_env,
+        )
+        assert rc == 2
+        rc, _, _ = run_hook(
+            self._payload(sid, layout["project"], target, agent_id="agent-2"),
+            hook_env,
+        )
+        assert rc == 2
+        rc, _, _ = run_hook(
+            self._payload(sid, layout["project"], target, agent_id="agent-1"),
+            hook_env,
+        )
+        assert rc == 0
+
+    def test_disk_equivalence_is_global(self, worktree_layout, hook_env):
+        # The project scan (equiv) suppresses for subagents too — a
+        # byte-identical worktree copy is a disk fact, not transcript state.
+        sid = next_sid("scope-equiv")
+        payload = self._payload(
+            sid, worktree_layout["worktree"],
+            os.path.join(worktree_layout["repo"], "some_dir", "file.py"),
+            agent_id="agent-abc",
+        )
+        rc, _, stderr = run_hook(payload, hook_env)
+        assert rc == 0
+        assert "CLAUDE.md" not in stderr
+
+
+# ---------------------------------------------------------------------------
+# UserPromptSubmit turn-boundary check
+# ---------------------------------------------------------------------------
+
+class TestUserPromptCheck:
+    def _prompt(self, sid, cwd):
+        return {
+            "session_id": sid,
+            "cwd": cwd,
+            "prompt": "do the thing",
+            "hook_event_name": "UserPromptSubmit",
+        }
+
+    def test_unseeded_session_is_silent(self, layout, hook_env):
+        sid = next_sid("prompt-unseeded")
+        rc, stdout, _ = run_script(PROMPT_CHECK, self._prompt(sid, layout["project"]), hook_env)
+        assert rc == 0
+        assert stdout == ""
+
+    def test_ancestor_change_caught_at_prompt(self, layout, hook_env):
+        sid = next_sid("prompt-ancestor")
+        run_script(SESSION_START, {
+            "session_id": sid, "cwd": layout["project"], "source": "startup",
+        }, hook_env)
+
+        rc, stdout, _ = run_script(PROMPT_CHECK, self._prompt(sid, layout["project"]), hook_env)
+        assert rc == 0
+        assert stdout == ""
+
+        parent_md = os.path.join(layout["parent"], "CLAUDE.md")
+        Path(parent_md).write_text("# parent, revised at turn boundary\n")
+
+        rc, stdout, _ = run_script(PROMPT_CHECK, self._prompt(sid, layout["project"]), hook_env)
+        assert rc == 0
+        assert parent_md in stdout
+        assert "changed on disk" in stdout
+
+        # One-shot: next prompt is silent again.
+        rc, stdout, _ = run_script(PROMPT_CHECK, self._prompt(sid, layout["project"]), hook_env)
+        assert rc == 0
+        assert stdout == ""
+
+    def test_in_project_subtree_change_caught_at_prompt(self, layout, hook_env):
+        sid = next_sid("prompt-subtree")
+        sub_md = os.path.join(layout["project"], "subdir", "CLAUDE.md")
+        Path(sub_md).write_text("# subdir rules\n")
+
+        # Access loads it natively and mirrors it into the ledger.
+        rc, _, _ = run_hook(build_json(
+            tool="Read", sid=sid, cwd=layout["project"],
+            file_path=os.path.join(layout["project"], "subdir", "file.txt"),
+        ), hook_env)
+        assert rc == 0
+
+        Path(sub_md).write_text("# subdir rules, revised\n")
+        rc, stdout, _ = run_script(PROMPT_CHECK, self._prompt(sid, layout["project"]), hook_env)
+        assert rc == 0
+        assert sub_md in stdout
+
+    def test_outside_flagged_change_not_checked_at_prompt(self, layout, hook_env):
+        # Outside files re-check on access only; a tree the model is no
+        # longer touching shouldn't nag at every prompt.
+        sid = next_sid("prompt-outside")
+        rc, _, _ = run_hook(build_json(
+            tool="Read", sid=sid, cwd=layout["project"],
+            file_path=os.path.join(layout["sibling"], "file.txt"),
+        ), hook_env)
+        assert rc == 2
+
+        Path(layout["sibling"], "CLAUDE.md").write_text("# sibling, revised\n")
+        rc, stdout, _ = run_script(PROMPT_CHECK, self._prompt(sid, layout["project"]), hook_env)
+        assert rc == 0
+        assert stdout == ""
+
+    def test_new_ancestor_caught_at_prompt(self, layout, hook_env):
+        sid = next_sid("prompt-new-ancestor")
+        run_script(SESSION_START, {
+            "session_id": sid, "cwd": layout["project"], "source": "startup",
+        }, hook_env)
+
+        project_md = os.path.join(layout["project"], "CLAUDE.md")
+        Path(project_md).write_text("# project rules, created mid-session\n")
+        rc, stdout, _ = run_script(PROMPT_CHECK, self._prompt(sid, layout["project"]), hook_env)
+        assert rc == 0
+        assert project_md in stdout
 
 
 # ---------------------------------------------------------------------------

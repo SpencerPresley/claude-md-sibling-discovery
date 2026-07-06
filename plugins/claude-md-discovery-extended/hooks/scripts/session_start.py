@@ -21,7 +21,6 @@ import sys
 import traceback
 
 from claude_md_lib import (
-    KIND_FLAGGED,
     Ledger,
     gc_state,
     ledger_path,
@@ -87,11 +86,12 @@ def _main(data: dict) -> None:
         except OSError:
             pass
     elif source == "compact":
-        entries, seeded = load_ledger(lpath)
-        kept = {p: m for p, m in entries.items() if m["k"] != KIND_FLAGGED}
-        if len(kept) != len(entries):
-            rewrite_ledger(lpath, kept, seeded)
-            dropped = sorted(set(entries) - set(kept))
+        # Flagged entries lived in transcripts: the main transcript was
+        # just compacted, and any subagent transcripts are gone entirely.
+        entries, flagged, seeded = load_ledger(lpath)
+        if flagged:
+            rewrite_ledger(lpath, entries, {}, seeded)
+            dropped = sorted({p for (p, _) in flagged})
             log_event(session_id, "compact_drop", dropped=dropped)
 
     ledger = Ledger(session_id)
