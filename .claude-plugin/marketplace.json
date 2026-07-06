@@ -11,7 +11,7 @@
       "name": "claude-md-discovery-extended",
       "source": "./plugins/claude-md-discovery-extended",
       "description": "Auto-discovers CLAUDE.md/AGENTS.md files from directories outside your project tree, deduplicated by content hash (worktrees, clones, copied templates stay silent), with re-read nudges when loaded instruction files change on disk.",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "keywords": ["claude-md", "agents-md", "discovery", "hooks", "auto-discovery", "worktrees", "context-health"]
     },
     {
