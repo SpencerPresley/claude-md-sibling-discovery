@@ -34,6 +34,13 @@
       "description": "Audits Python files for Google-style docstring compliance and fixes violations. A hook injects parser-safe rules just-in-time when the files being fixed define LangChain @tool functions.",
       "version": "0.1.0",
       "keywords": ["docstrings", "python", "google-style", "langchain", "skill", "hooks"]
+    },
+    {
+      "name": "llm-input-engineering",
+      "source": "./plugins/llm-input-engineering",
+      "description": "Designs and diagnoses compiled LLM input across prompts, chat templates, tool schemas, structured decoding, prefix caches, retrieval, eviction, and compaction.",
+      "version": "0.1.0",
+      "keywords": ["prompt-engineering", "context-engineering", "tools", "structured-output", "chat-template", "prefix-cache", "agents", "skill"]
     }
   ]
 }

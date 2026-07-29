@@ -8,6 +8,10 @@ Tests for this repo's plugin hooks.
   file/directory target lists exactly the `@tool` files, pre-seeded files stay
   silent on `Read`, and the Read-detector fallback is graduated (FULL → LIGHT →
   silent-on-re-read). Run it directly; exits non-zero on any failure.
+- **`test_llm_input_engineering.py`** — contract checks for the public
+  `llm-input-engineering` plugin: marketplace registration, narrow skill
+  triggers, portable content, working relative links, and the exact
+  engine-specific Devstral ordering recorded by the case study.
 - **`run-hook-capture-test.sh`** — instrumentation for discovering the exact
   stdin payloads Claude Code hands to hook events, used to validate the hook
   design against reality instead of guessing undocumented fields.

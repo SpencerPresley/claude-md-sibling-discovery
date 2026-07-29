@@ -1,0 +1,8 @@
+{
+  "name": "llm-input-engineering",
+  "description": "Designs and diagnoses compiled LLM input across prompts, chat templates, tool schemas, structured decoding, prefix caches, retrieval, eviction, and compaction.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Spencer Presley"
+  }
+}

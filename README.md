@@ -22,6 +22,7 @@ Then install individual plugins:
 | [codex-context-loader](plugins/codex-context-loader/) | Injects a detailed Codex-plugin briefing into your session — but only when the Codex plugin is actually enabled, so it costs zero context tokens when you're not using Codex. |
 | [adversarial-review](plugins/adversarial-review/) | Adversarial code/plan reviewer that uses a Codex-style review contract while reviewing only the exact slice you name. |
 | [fix-docstrings](plugins/fix-docstrings/) | Audits Python files for Google-style docstring compliance and fixes violations. A hook injects parser-safe rules just-in-time when the files being fixed define LangChain `@tool` functions, so the skill stays lean for the common case. |
+| [llm-input-engineering](plugins/llm-input-engineering/) | Designs and diagnoses prompts as compiled model input: rendered chat templates, tool/schema placement, structured decoding, prefix reuse, retrieval, and lossy context transitions. |
 
 ## License
 
