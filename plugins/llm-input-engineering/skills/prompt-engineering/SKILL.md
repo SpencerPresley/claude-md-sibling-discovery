@@ -12,9 +12,12 @@ than the plausible wrong tasks.
 
 For a deployed system, identify the model/package, inference engine, framework
 adapter, effective chat template, tool/schema render points, decoder
-constraints, and parser. Read
-[rendering and cache](../context-engineering/references/rendering-and-cache.md)
-when those are unknown.
+constraints, and parser. If rendering, template selection, or prefix-cache
+behavior is part of the problem, use the `context-engineering` skill to
+establish the effective rendered input. If that skill is unavailable, inspect
+the model package, inference engine, framework adapter, effective chat template,
+rendered segment order, decoder constraints, and output parser directly before
+proceeding.
 
 If the user wants a standalone prompt and no target exists, state the assumed
 model class. Do not invent a harness.

@@ -2,6 +2,8 @@
 name: adversarial-review
 description: Adversarial review for a specific code slice or plan. Pins the exact target, captures intent and focus, and dispatches a read-only reviewer to find the strongest reasons not to ship.
 argument-hint: "[code|plan] [target] [focus...]"
+metadata:
+  internal: true
 ---
 
 # Adversarial Review

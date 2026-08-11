@@ -97,9 +97,13 @@ Examples:
 ## Process
 
 1. Read the target files.
-2. Scan each module, class, function, and method against the Style Reference.
-3. Fix each violation with the minimal change: preserve existing content, add missing sections, infer descriptions from the code. If intent is unclear, ask.
-4. Re-read modified files to confirm the fixes.
+2. If any target file defines functions decorated with LangChain `@tool`, read
+   the [LangChain tool docstring rules](references/langchain-tool-docstrings.md)
+   before editing any `@tool` functions in this run. Do not load that reference
+   when the target contains no LangChain `@tool` functions.
+3. Scan each module, class, function, and method against the Style Reference.
+4. Fix each violation with the minimal change: preserve existing content, add missing sections, infer descriptions from the code. If intent is unclear, ask.
+5. Re-read modified files to confirm the fixes.
 
 For a directory, process `__init__.py` first, then modules, then tests (lighter — basic summaries on test functions). Batch large directories and confirm before continuing.
 
