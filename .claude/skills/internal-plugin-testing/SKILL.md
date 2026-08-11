@@ -1,6 +1,7 @@
 ---
 name: internal-plugin-testing
 description: Use when running the internal hook-input capture test for this repo's plugins — exercises slash-command expansion, Skill-tool invocation, and the Read tool so the capture hooks record their payloads.
+disable-model-invokation: true
 ---
 
 # Internal Plugin Testing
