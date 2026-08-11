@@ -26,7 +26,7 @@ engine-specific tool position, or a lossy history replacement.
 ## Install
 
 ```text
-/plugin install llm-input-engineering@spencer-and-claude-sitting-in-a-tree
+/plugin install llm-input-engineering@everyday-engineering-skills
 ```
 
 The skills remain model-visible and can also be invoked explicitly:

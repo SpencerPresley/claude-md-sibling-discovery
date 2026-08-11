@@ -1,17 +1,42 @@
-# spencer-and-claude-sitting-in-a-tree
+# Everyday Engineering Skills
 
-Focused Claude Code plugins that each solve one specific problem. Simple but powerful, like how you feel when you're sitting high up in a tree with Claude and y'all are... well, ya know. Small enough to actually use, sharp enough to actually help.
+Agent Skills, Claude Code plugins, and hooks that each solve one specific
+engineering problem. Small enough to actually use, sharp enough to actually
+help.
 
 ## Installation
 
+### Claude Code plugins
+
 ```text
-/plugin marketplace add SpencerPresley/spencer-and-claude-sitting-in-a-tree
+/plugin marketplace add SpencerPresley/everyday-engineering-skills
 ```
 
 Then install individual plugins:
 
 ```text
-/plugin install <plugin-name>@spencer-and-claude-sitting-in-a-tree
+/plugin install <plugin-name>@everyday-engineering-skills
+```
+
+### Agent skills
+
+The standalone skills can also be installed with the
+[Vercel Skills CLI](https://github.com/vercel-labs/skills) using the GitHub
+`owner/repo` shorthand:
+
+```sh
+# Prompt and context engineering are designed to be installed together.
+npx skills add SpencerPresley/everyday-engineering-skills --skill context-engineering prompt-engineering
+
+# The core docstring skill, without the Claude Code plugin's hook.
+npx skills add SpencerPresley/everyday-engineering-skills --skill fix-docstrings
+```
+
+Add `--global` to install for your user instead of the current project, or list
+the available skills before installing:
+
+```sh
+npx skills add SpencerPresley/everyday-engineering-skills --list
 ```
 
 ## Plugins
