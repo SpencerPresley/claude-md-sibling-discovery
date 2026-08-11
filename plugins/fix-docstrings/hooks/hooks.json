@@ -1,5 +1,5 @@
 {
-  "description": "While the fix-docstrings skill is active, watches the Python files being read and injects the LangChain `@tool` docstring rules just-in-time — only when a file actually defines `@tool` functions, and only once per run.",
+  "description": "While fix-docstrings is active, injects LangChain's parsed-docstring rules only for files that explicitly enable `parse_docstring=True`, once per file and invocation.",
   "hooks": {
     "UserPromptExpansion": [
       {
@@ -30,6 +30,28 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/langchain_tool_context.py\" detect \"${CLAUDE_PLUGIN_ROOT}\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/langchain_tool_context.py\" cleanup \"${CLAUDE_PLUGIN_ROOT}\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/langchain_tool_context.py\" cleanup \"${CLAUDE_PLUGIN_ROOT}\"",
             "timeout": 5
           }
         ]

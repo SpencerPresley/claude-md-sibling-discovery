@@ -97,10 +97,12 @@ Examples:
 ## Process
 
 1. Read the target files.
-2. If any target file defines functions decorated with LangChain `@tool`, read
-   the [LangChain tool docstring rules](references/langchain-tool-docstrings.md)
-   before editing any `@tool` functions in this run. Do not load that reference
-   when the target contains no LangChain `@tool` functions.
+2. If a target enables LangChain docstring parsing with `parse_docstring=True`
+   (for example, `@tool(parse_docstring=True)` or
+   `StructuredTool.from_function(..., parse_docstring=True)`), read the
+   [LangChain parsed-tool rules](references/langchain-tool-docstrings.md) before
+   editing those docstrings. Do not load that reference for the default
+   `@tool`, whose `parse_docstring` option is false.
 3. Scan each module, class, function, and method against the Style Reference.
 4. Fix each violation with the minimal change: preserve existing content, add missing sections, infer descriptions from the code. If intent is unclear, ask.
 5. Re-read modified files to confirm the fixes.

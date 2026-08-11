@@ -31,8 +31,8 @@
     {
       "name": "fix-docstrings",
       "source": "./plugins/fix-docstrings",
-      "description": "Audits Python files for Google-style docstring compliance and fixes violations. A hook injects parser-safe rules just-in-time when the files being fixed define LangChain @tool functions.",
-      "version": "0.1.0",
+      "description": "Audits Python files for Google-style docstring compliance and fixes violations. A hook injects the continuation-line rule just-in-time when a LangChain tool explicitly enables parse_docstring.",
+      "version": "0.1.1",
       "keywords": ["docstrings", "python", "google-style", "langchain", "skill", "hooks"]
     },
     {

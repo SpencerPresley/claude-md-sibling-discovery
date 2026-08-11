@@ -1,23 +1,15 @@
 #!/usr/bin/env python3
-"""Inject the LangChain `@tool` docstring rules just-in-time during fix-docstrings.
+"""Inject LangChain's parsed-docstring constraints during fix-docstrings.
 
-The fix-docstrings skill no longer mentions LangChain at all. Instead, this hook
-notices when the skill is active and a Python file containing LangChain `@tool`
-functions is read, then injects the parser-safe docstring rules — exactly when
-they are relevant, for the specific file in hand. That keeps the skill body lean
-for the common (non-LangChain) case while still protecting tool schemas when
-they're actually present.
+LangChain only parses Google-style argument descriptions when a tool is built
+with ``parse_docstring=True``. This hook finds that explicit opt-in on decorated
+functions and tool factory calls, including aliased or re-exported decorators
+and ``StructuredTool.from_function``.
 
-The injection is graduated, keyed to whether the reference is already in context
-(a session-level fact), not to a single invocation:
-  - The FIRST `@tool` file seen in the session gets the full pointer telling you
-    to read the reference file.
-  - Every LATER `@tool` file gets a light reminder to apply the rules you already
-    read — no path, no "re-read" — since the reference is already in context.
-Each file is flagged at most once; re-reads of the same file stay silent.
-
-Only the `@tool` decorator is detected: it is the path that parses the docstring
-into the tool schema. `StructuredTool` does not parse the docstring on its own.
+State is scoped to one skill invocation. A trigger writes a fresh generation;
+files are deduplicated only within that generation, and Stop/SessionEnd remove
+the active marker. Every injected reminder is self-contained so it never relies
+on an earlier reference surviving context compaction.
 
 Modes (argv[1]):
   trigger  Mark the skill active for this session. Fired both by
@@ -25,35 +17,31 @@ Modes (argv[1]):
            on the Skill tool (when the model invokes the skill itself), so every
            invocation route arms the detector. On the UserPromptExpansion path
            the typed target is available in command_args, so trigger also scans
-           the named files/dirs up front and injects the exact list of `@tool`
-           files (pre-seeding state so the Read detector won't repeat them).
+           the named files/dirs up front and injects the exact list of files that
+           enable docstring parsing (pre-seeding state so Read won't repeat them).
   detect   Fired by PostToolUse on Read. If the skill is active and the file just
-           read defines LangChain `@tool` functions, emit the full pointer (first
-           time) or a light reminder (after) as additionalContext. This is the
-           fallback for model invocation and for files outside the typed target.
+           read explicitly enables parsed tool docstrings, emit the parser rule
+           and reference as additionalContext once per invocation.
+  cleanup  Fired by Stop and SessionEnd. Disarm detection for the session.
 
 argv[2] is CLAUDE_PLUGIN_ROOT, used to resolve the reference file path.
 
-State lives in per-session marker files under the temp dir:
-  fix-docstrings-<session>.active        set by `trigger`; gates `detect`
-  fix-docstrings-<session>.referenced    set once the full pointer has been sent
-  fix-docstrings-<session>.seen-<hash>   set per file already flagged
-The `.active` gate is what keeps `detect` cheap and silent on the Read calls of
-every other session — without it this hook would fire on every Python read.
+State lives in per-session marker files under the temp dir. ``.active`` and each
+``.seen-<hash>`` contain an invocation generation. A seen marker suppresses a
+file only when its generation matches the current active generation.
 """
+import ast
 import hashlib
 import json
 import os
 import re
 import sys
 import tempfile
+import uuid
 
 REFERENCE_REL = "skills/fix-docstrings/references/langchain-tool-docstrings.md"
 
-# `@tool` used as a decorator: bare `@tool` or `@tool(...)`, at line start.
-TOOL_DECORATOR = re.compile(r"^\s*@tool\b", re.MULTILINE)
-# Any LangChain import — paired with the decorator this is a strong tool signal.
-LANGCHAIN_IMPORT = re.compile(r"^\s*(?:from\s+langchain|import\s+langchain)", re.MULTILINE)
+PARSER_FACTORY_NAMES = {"create_schema_from_function", "from_function", "tool"}
 
 
 def flag_path(kind, session_id):
@@ -66,14 +54,73 @@ def seen_marker(session_id, file_path):
     return flag_path(f"seen-{digest}", session_id)
 
 
+def read_marker(path):
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.read().strip()
+    except OSError:
+        return ""
+
+
+def write_marker(path, value):
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(value)
+
+
+def call_name(call):
+    """Return the final identifier in a call target."""
+    function = call.func
+    if isinstance(function, ast.Name):
+        return function.id
+    if isinstance(function, ast.Attribute):
+        return function.attr
+    return ""
+
+
+def enables_docstring_parsing(call):
+    """Whether a call contains the literal opt-in ``parse_docstring=True``."""
+    return any(
+        keyword.arg == "parse_docstring"
+        and isinstance(keyword.value, ast.Constant)
+        and keyword.value.value is True
+        for keyword in call.keywords
+    )
+
+
+def source_has_parsed_tool(source):
+    """Whether source explicitly enables LangChain-style docstring parsing."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+
+    # Decorator aliases and re-exports cannot be resolved locally, but the
+    # parse_docstring keyword itself is the relevant and distinctive contract.
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for decorator in node.decorator_list:
+            if isinstance(decorator, ast.Call) and enables_docstring_parsing(decorator):
+                return True
+
+    # Cover direct factories without treating every unrelated function that
+    # happens to accept a parse_docstring option as a LangChain tool.
+    return any(
+        isinstance(node, ast.Call)
+        and call_name(node) in PARSER_FACTORY_NAMES
+        and enables_docstring_parsing(node)
+        for node in ast.walk(tree)
+    )
+
+
 def is_tool_file(path):
-    """True if the .py file defines a LangChain `@tool` function."""
+    """True if the file explicitly enables parsed LangChain tool docstrings."""
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as handle:
             source = handle.read()
     except OSError:
         return False
-    return bool(TOOL_DECORATOR.search(source) and LANGCHAIN_IMPORT.search(source))
+    return source_has_parsed_tool(source)
 
 
 # Guard so a pathological directory tree can't stall the hook past its timeout.
@@ -81,7 +128,7 @@ MAX_SCAN_FILES = 1000
 
 
 def scan_targets(command_args, cwd):
-    """Find `@tool` files among the file/dir paths named in command_args.
+    """Find parser-enabled tool files in paths named by command_args.
 
     Each whitespace token is resolved against cwd; a leading `@` (Claude's
     file-mention syntax) and trailing slashes/commas are stripped. Files are
@@ -120,8 +167,7 @@ def read_event():
 
 
 def mode_trigger(event, plugin_root):
-    """Arm the detector, and for a typed `/fix-docstrings <target>`, inject an
-    upfront list of the `@tool` files in the named target.
+    """Arm the detector and list parser-enabled files in a typed target.
 
     The upfront scan needs the typed target, which only the slash-command
     (UserPromptExpansion) path carries in command_args. Model invocation via the
@@ -135,7 +181,8 @@ def mode_trigger(event, plugin_root):
         name = (event.get("tool_input") or {}).get("skill", "") or ""
     if "fix-docstrings" not in name:
         return
-    open(flag_path("active", session_id), "w").close()
+    generation = uuid.uuid4().hex
+    write_marker(flag_path("active", session_id), generation)
 
     if not is_expansion:
         return
@@ -143,20 +190,21 @@ def mode_trigger(event, plugin_root):
     if not tool_files:
         return
 
-    # Pre-seed state so the Read detector won't re-flag these files.
-    open(flag_path("referenced", session_id), "w").close()
+    # Pre-seed this invocation so the Read detector won't repeat the upfront
+    # self-contained warning for the same files.
     for fpath in tool_files:
-        open(seen_marker(session_id, fpath), "w").close()
+        write_marker(seen_marker(session_id, fpath), generation)
 
     reference = os.path.join(plugin_root, REFERENCE_REL)
     listed = "\n".join(f"  - {fpath}" for fpath in tool_files)
     context = (
-        f"The `/fix-docstrings` target defines LangChain `@tool` functions in "
-        f"these files:\n{listed}\n\nLangChain parses `@tool` docstrings to build "
-        f"the tool's input schema, so standard Google-style `(type)` annotations "
-        f"and rich formatting (bullets, tables, nested entries) can silently "
-        f"corrupt or drop arguments. Read the LangChain tool docstring rules at "
-        f"`{reference}` and apply them to every `@tool` function in those files."
+        f"The `/fix-docstrings` target enables LangChain docstring parsing with "
+        f"`parse_docstring=True` in these files:\n{listed}\n\nRead the LangChain "
+        f"tool docstring rules at `{reference}` before editing them. Parenthesized "
+        f"types are accepted by LangChain; follow the normal style rule for types. "
+        f"The parser-specific hazard is a colon-bearing continuation under `Args` "
+        f"(for example, `- mode:`), which becomes a bogus argument name. Rewrite "
+        f"such nested entries as prose."
     )
     print(json.dumps({
         "hookSpecificOutput": {
@@ -167,52 +215,45 @@ def mode_trigger(event, plugin_root):
 
 
 def mode_detect(event, plugin_root):
-    """Flag a just-read file that defines LangChain @tool functions.
-
-    The first such file in the session gets the full pointer to the reference;
-    every later file gets a light reminder, since the reference is already in
-    context. Each file is flagged at most once — re-reads stay silent.
-    """
+    """Flag a just-read file with parser-enabled LangChain tool docstrings."""
     session_id = event.get("session_id", "")
-    if not os.path.exists(flag_path("active", session_id)):
+    generation = read_marker(flag_path("active", session_id))
+    if not generation:
         return
 
     file_path = (event.get("tool_input") or {}).get("file_path", "") or ""
     if not file_path.endswith(".py"):
         return
     seen = seen_marker(session_id, file_path)
-    if os.path.exists(seen):
+    if read_marker(seen) == generation:
         return
     if not is_tool_file(file_path):
         return
 
-    open(seen, "w").close()
-    referenced = flag_path("referenced", session_id)
-    if os.path.exists(referenced):
-        context = (
-            f"`{file_path}` also defines LangChain `@tool` functions. Apply the "
-            f"parser-safe docstring rules already in context (omit `(type)`, keep "
-            f"descriptions as plain prose, no bullets/tables/nested entries) to "
-            f"its `@tool` functions — no need to re-read the reference."
-        )
-    else:
-        open(referenced, "w").close()
-        reference = os.path.join(plugin_root, REFERENCE_REL)
-        context = (
-            f"`{file_path}` defines LangChain `@tool` functions. LangChain parses "
-            f"these docstrings to build the tool's input schema, so the standard "
-            f"Google-style `(type)` annotations and rich formatting (bullets, "
-            f"tables, nested entries) can silently corrupt or drop arguments. "
-            f"Before fixing any docstrings in this file, read the LangChain tool "
-            f"docstring rules at `{reference}` and apply them to every `@tool` "
-            f"function. The same rules apply to any other `@tool` files in this run."
-        )
+    write_marker(seen, generation)
+    reference = os.path.join(plugin_root, REFERENCE_REL)
+    context = (
+        f"`{file_path}` enables LangChain docstring parsing with "
+        f"`parse_docstring=True`. Before editing its parsed tool docstrings, read "
+        f"`{reference}`. Parenthesized types are accepted by LangChain; follow the "
+        f"normal style rule for types. The parser-specific hazard is a colon-bearing "
+        f"continuation under `Args` (for example, `- mode:`), which becomes a bogus "
+        f"argument name. Rewrite such nested entries as prose."
+    )
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "PostToolUse",
             "additionalContext": context,
         }
     }))
+
+
+def mode_cleanup(event):
+    """Disarm detection when the skill invocation or session ends."""
+    try:
+        os.unlink(flag_path("active", event.get("session_id", "")))
+    except FileNotFoundError:
+        pass
 
 
 def main():
@@ -225,6 +266,8 @@ def main():
         mode_trigger(event, plugin_root)
     elif mode == "detect":
         mode_detect(event, plugin_root)
+    elif mode == "cleanup":
+        mode_cleanup(event)
 
 
 if __name__ == "__main__":

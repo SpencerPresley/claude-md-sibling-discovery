@@ -7,14 +7,15 @@ Types are intentionally omitted from `Args` and `Returns`: they come from the fu
 ## How it works
 
 - The `fix-docstrings` skill is the entry point. Point it at a file or directory; it scans every module, class, function, and method and applies the style reference inline.
-- A hook (`hooks/scripts/langchain_tool_context.py`) adds the one piece of context the skill body deliberately leaves out: **LangChain `@tool` docstrings parse differently.** LangChain reads the docstring to build a tool's input schema, so `(type)` annotations and rich formatting (bullets, tables, nested entries) can silently corrupt or drop arguments.
+- A hook (`hooks/scripts/langchain_tool_context.py`) adds the one conditional rule the skill body leaves out: **LangChain can parse a tool's Google-style `Args` section when `parse_docstring=True`.** Colon-bearing continuation entries such as `- mode:` can then be mistaken for argument names and make tool construction fail.
 
-  Rather than carry that caveat in the skill for every run, the hook injects it only when it's relevant:
+  Rather than carry that caveat in every run, the hook injects it only when it is relevant:
 
-  1. When the skill is invoked — whether you type `/fix-docstrings` (a `UserPromptExpansion` hook) or the model invokes the skill itself (a `PostToolUse` hook on the `Skill` tool) — a per-session flag is set. On the `/fix-docstrings <target>` path the typed target is available, so the hook **scans it up front** and, if any files in it define `@tool` functions, injects the exact list along with the pointer to `references/langchain-tool-docstrings.md`. You learn which files need parser-safe rules before editing any of them.
-  2. For everything the upfront scan can't see — the model invoking the skill (no target), or a file read from outside the named target — a `PostToolUse` hook on `Read` is the fallback. It checks each Python file the skill opens and injects the parser-safe rules graduated to avoid wasted tokens: the **first** `@tool` file in the session gets the full pointer; every **later** one gets a light reminder to apply the rules already in context (no re-read). Each file is flagged at most once.
+  1. When the skill is invoked — whether you type `/fix-docstrings` (a `UserPromptExpansion` hook) or the model invokes the skill itself (a `PostToolUse` hook on the `Skill` tool) — a fresh invocation generation is recorded. On `/fix-docstrings <target>`, the hook scans the target up front and lists files whose AST explicitly passes `parse_docstring=True` through a decorator or LangChain tool factory.
+  2. For files the upfront scan cannot see, a `PostToolUse` hook on `Read` applies the same AST check. Aliased and re-exported decorators and `StructuredTool.from_function(..., parse_docstring=True)` are covered; the default `@tool` is intentionally ignored because parsing defaults to false.
+  3. Each injected reminder contains the actual continuation-line hazard and the reference path, so it does not depend on an earlier reminder remaining in context. Files are deduplicated within one invocation, and `Stop`/`SessionEnd` disarm the hook afterward.
 
-  When you're not fixing LangChain tools, the reference is never loaded and the caveat never enters context.
+  When no tool enables docstring parsing, the reference is never loaded and the caveat never enters context.
 
 ## Usage
 
