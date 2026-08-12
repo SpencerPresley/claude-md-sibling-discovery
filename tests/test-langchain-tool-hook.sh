@@ -15,6 +15,7 @@ HOOKS="$ROOT/hooks/hooks.json"
 MANIFEST="$ROOT/.claude-plugin/plugin.json"
 MARKETPLACE="$REPO_ROOT/.claude-plugin/marketplace.json"
 REFERENCE="$ROOT/skills/fix-docstrings/references/langchain-tool-docstrings.md"
+PLUGIN_README="$ROOT/README.md"
 PYTHON=(uv run --no-project python)
 
 FIX="$(mktemp -d)"
@@ -24,13 +25,19 @@ mkdir -p "$FIX/proj/sub" "$FIX/state"
 PARSED_TOOL_SRC=$'from langchain_core.tools import tool\n\n@tool(parse_docstring=True)\ndef act(x: str) -> str:\n    """Act.\n\n    Args:\n        x: Value.\n    """\n    return x\n'
 DEFAULT_TOOL_SRC=$'from langchain_core.tools import tool\n\n@tool\ndef act(x: str) -> str:\n    """Act."""\n    return x\n'
 ALIASED_TOOL_SRC=$'from langchain_core.tools import tool as lc_tool\n\n@lc_tool(parse_docstring=True)\ndef act(x: str) -> str:\n    """Act."""\n    return x\n'
-REEXPORTED_TOOL_SRC=$'from project_tools import custom_tool\n\n@custom_tool(parse_docstring=True)\ndef act(x: str) -> str:\n    """Act."""\n    return x\n'
+DIRECT_ALIASED_TOOL_SRC=$'from langchain_core.tools import tool as lc_tool\n\ndef act(x: str) -> str:\n    """Act."""\n    return x\n\nACT = lc_tool(act, parse_docstring=True)\n'
 STRUCTURED_TOOL_SRC=$'from langchain_core.tools import StructuredTool\n\ndef act(x: str) -> str:\n    """Act."""\n    return x\n\nACT = StructuredTool.from_function(act, parse_docstring=True)\n'
+UNRELATED_DECORATOR_SRC=$'from project_tools import custom\n\n@custom(parse_docstring=True)\ndef act(x: str) -> str:\n    """Act."""\n    return x\n'
+FOREIGN_TOOL_SRC=$'from project_tools import tool\n\n@tool(parse_docstring=True)\ndef act(x: str) -> str:\n    """Act."""\n    return x\n'
+UNRELATED_FACTORY_SRC=$'from project_tools import Other\n\ndef act(x: str) -> str:\n    """Act."""\n    return x\n\nACT = Other.from_function(act, parse_docstring=True)\n'
 printf '%s' "$PARSED_TOOL_SRC" > "$FIX/proj/a_tool.py"
 printf '%s' "$ALIASED_TOOL_SRC" > "$FIX/proj/sub/aliased_tool.py"
-printf '%s' "$REEXPORTED_TOOL_SRC" > "$FIX/proj/sub/reexported_tool.py"
+printf '%s' "$DIRECT_ALIASED_TOOL_SRC" > "$FIX/proj/sub/direct_aliased_tool.py"
 printf '%s' "$STRUCTURED_TOOL_SRC" > "$FIX/proj/structured_tool.py"
 printf '%s' "$DEFAULT_TOOL_SRC" > "$FIX/proj/default_tool.py"
+printf '%s' "$UNRELATED_DECORATOR_SRC" > "$FIX/proj/unrelated_decorator.py"
+printf '%s' "$FOREIGN_TOOL_SRC" > "$FIX/proj/foreign_tool.py"
+printf '%s' "$UNRELATED_FACTORY_SRC" > "$FIX/proj/unrelated_factory.py"
 printf '%s' "$PARSED_TOOL_SRC" > "$FIX/outside_tool.py"
 printf 'def plain():\n    return 1\n' > "$FIX/proj/plain.py"
 printf 'configure(parse_docstring=True)\n' > "$FIX/proj/unrelated.py"
@@ -79,11 +86,14 @@ OUT="$(trig "$(mk_expansion "$S" "please fix @$FIX/proj/ now" "$FIX")")"
 check     "A dir-trigger classification" UPFRONT "$(printf '%s' "$OUT" | classify)"
 assert_lists "A" "$FIX/proj/a_tool.py" "$OUT"
 assert_lists "A" "$FIX/proj/sub/aliased_tool.py" "$OUT"
-assert_lists "A" "$FIX/proj/sub/reexported_tool.py" "$OUT"
+assert_lists "A" "$FIX/proj/sub/direct_aliased_tool.py" "$OUT"
 assert_lists "A" "$FIX/proj/structured_tool.py" "$OUT"
 refute_lists "A" "$FIX/proj/default_tool.py" "$OUT"
 refute_lists "A" "$FIX/proj/plain.py" "$OUT"
 refute_lists "A" "$FIX/proj/unrelated.py" "$OUT"
+refute_lists "A" "$FIX/proj/unrelated_decorator.py" "$OUT"
+refute_lists "A" "$FIX/proj/foreign_tool.py" "$OUT"
+refute_lists "A" "$FIX/proj/unrelated_factory.py" "$OUT"
 check     "A read of listed file is silent" SILENT "$(detect "$S" "$FIX/proj/a_tool.py" | classify)"
 check     "A read of outside parsed tool is self-contained" SAFE "$(detect "$S" "$FIX/outside_tool.py" | classify)"
 check     "A read of default @tool file is silent" SILENT "$(detect "$S" "$FIX/proj/default_tool.py" | classify)"
@@ -104,6 +114,7 @@ OUT="$(detect "$S" "$FIX/proj/a_tool.py")"
 check     "C first parsed-tool read is self-contained" SAFE "$(printf '%s' "$OUT" | classify)"
 assert_lists "C first reminder" "langchain-tool-docstrings.md" "$OUT"
 assert_lists "C first reminder" "colon-bearing" "$OUT"
+assert_lists "C first reminder" "signature annotation" "$OUT"
 OUT="$(detect "$S" "$FIX/proj/sub/aliased_tool.py")"
 check     "C second parsed-tool read is self-contained" SAFE "$(printf '%s' "$OUT" | classify)"
 assert_lists "C second reminder" "langchain-tool-docstrings.md" "$OUT"
@@ -147,7 +158,11 @@ REF_TEXT="$(<"$REFERENCE")"
 assert_lists "reference" 'parse_docstring=False' "$REF_TEXT"
 assert_lists "reference" 'parenthesized types are accepted' "$REF_TEXT"
 assert_lists "reference" 'colon-bearing continuation' "$REF_TEXT"
+assert_lists "reference" 'requires a signature annotation' "$REF_TEXT"
 refute_lists "reference" 'risks corrupting parsed output' "$REF_TEXT"
+refute_lists "reference" 'include it when' "$REF_TEXT"
+README_TEXT="$(<"$PLUGIN_README")"
+refute_lists "plugin README" 're-exported decorators' "$README_TEXT"
 
 echo
 echo "PASS=$PASS FAIL=$FAIL"

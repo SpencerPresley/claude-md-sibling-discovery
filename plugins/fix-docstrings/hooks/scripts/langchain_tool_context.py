@@ -2,9 +2,9 @@
 """Inject LangChain's parsed-docstring constraints during fix-docstrings.
 
 LangChain only parses Google-style argument descriptions when a tool is built
-with ``parse_docstring=True``. This hook finds that explicit opt-in on decorated
-functions and tool factory calls, including aliased or re-exported decorators
-and ``StructuredTool.from_function``.
+with ``parse_docstring=True``. This hook finds that explicit opt-in on known
+LangChain decorators and tool factory calls, including aliased imports and
+``StructuredTool.from_function``.
 
 State is scoped to one skill invocation. A trigger writes a fresh generation;
 files are deduplicated only within that generation, and Stop/SessionEnd remove
@@ -41,7 +41,12 @@ import uuid
 
 REFERENCE_REL = "skills/fix-docstrings/references/langchain-tool-docstrings.md"
 
-PARSER_FACTORY_NAMES = {"create_schema_from_function", "from_function", "tool"}
+LANGCHAIN_MODULES = ("langchain", "langchain_core")
+PARSER_CALL_SUFFIXES = (
+    ".StructuredTool.from_function",
+    ".create_schema_from_function",
+    ".tool",
+)
 
 
 def flag_path(kind, session_id):
@@ -67,13 +72,43 @@ def write_marker(path, value):
         handle.write(value)
 
 
-def call_name(call):
-    """Return the final identifier in a call target."""
-    function = call.func
-    if isinstance(function, ast.Name):
-        return function.id
-    if isinstance(function, ast.Attribute):
-        return function.attr
+def is_langchain_module(module):
+    """Whether an import path belongs to a LangChain Python package."""
+    return any(module == root or module.startswith(f"{root}.") for root in LANGCHAIN_MODULES)
+
+
+def import_bindings(tree):
+    """Map local import names to fully qualified LangChain symbols."""
+    bindings = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if not is_langchain_module(alias.name):
+                    continue
+                if alias.asname:
+                    bindings[alias.asname] = alias.name
+                else:
+                    root = alias.name.split(".", 1)[0]
+                    bindings[root] = root
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if not is_langchain_module(module):
+                continue
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                bindings[alias.asname or alias.name] = f"{module}.{alias.name}"
+    return bindings
+
+
+def resolve_reference(node, bindings):
+    """Resolve a name or attribute chain through known LangChain imports."""
+    if isinstance(node, ast.Name):
+        return bindings.get(node.id, "")
+    if isinstance(node, ast.Attribute):
+        base = resolve_reference(node.value, bindings)
+        if base:
+            return f"{base}.{node.attr}"
     return ""
 
 
@@ -87,6 +122,12 @@ def enables_docstring_parsing(call):
     )
 
 
+def is_langchain_parser_call(call, bindings):
+    """Whether a call is a known LangChain tool/parser construction path."""
+    reference = resolve_reference(call.func, bindings)
+    return bool(reference) and reference.endswith(PARSER_CALL_SUFFIXES)
+
+
 def source_has_parsed_tool(source):
     """Whether source explicitly enables LangChain-style docstring parsing."""
     try:
@@ -94,21 +135,11 @@ def source_has_parsed_tool(source):
     except SyntaxError:
         return False
 
-    # Decorator aliases and re-exports cannot be resolved locally, but the
-    # parse_docstring keyword itself is the relevant and distinctive contract.
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        for decorator in node.decorator_list:
-            if isinstance(decorator, ast.Call) and enables_docstring_parsing(decorator):
-                return True
-
-    # Cover direct factories without treating every unrelated function that
-    # happens to accept a parse_docstring option as a LangChain tool.
+    bindings = import_bindings(tree)
     return any(
         isinstance(node, ast.Call)
-        and call_name(node) in PARSER_FACTORY_NAMES
         and enables_docstring_parsing(node)
+        and is_langchain_parser_call(node, bindings)
         for node in ast.walk(tree)
     )
 
@@ -201,7 +232,9 @@ def mode_trigger(event, plugin_root):
         f"The `/fix-docstrings` target enables LangChain docstring parsing with "
         f"`parse_docstring=True` in these files:\n{listed}\n\nRead the LangChain "
         f"tool docstring rules at `{reference}` before editing them. Parenthesized "
-        f"types are accepted by LangChain; follow the normal style rule for types. "
+        f"types are accepted by LangChain for annotated parameters. "
+        f"Every documented `Args` parameter requires a signature annotation; a "
+        f"docstring `(type)` does not substitute for one. "
         f"The parser-specific hazard is a colon-bearing continuation under `Args` "
         f"(for example, `- mode:`), which becomes a bogus argument name. Rewrite "
         f"such nested entries as prose."
@@ -235,8 +268,11 @@ def mode_detect(event, plugin_root):
     context = (
         f"`{file_path}` enables LangChain docstring parsing with "
         f"`parse_docstring=True`. Before editing its parsed tool docstrings, read "
-        f"`{reference}`. Parenthesized types are accepted by LangChain; follow the "
-        f"normal style rule for types. The parser-specific hazard is a colon-bearing "
+        f"`{reference}`. Parenthesized types are accepted by LangChain for annotated "
+        f"parameters. "
+        f"Every documented `Args` parameter requires a signature annotation; a "
+        f"docstring `(type)` does not substitute for one. The parser-specific hazard "
+        f"is a colon-bearing "
         f"continuation under `Args` (for example, `- mode:`), which becomes a bogus "
         f"argument name. Rewrite such nested entries as prose."
     )

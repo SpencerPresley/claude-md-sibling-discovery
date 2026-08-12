@@ -4,10 +4,11 @@ Tests for this repo's plugin hooks.
 
 - **`test-langchain-tool-hook.sh`** — deterministic assertions for the
   `fix-docstrings` LangChain hook (no live model). Feeds crafted payloads and
-  checks AST detection of literal `parse_docstring=True` across decorators,
-  aliases, re-exports, and `StructuredTool.from_function`; default `@tool`
-  exclusion; invocation-scoped deduplication; and Stop/SessionEnd cleanup. Run
-  it directly; exits non-zero on any failure.
+  checks import-resolved AST detection of literal `parse_docstring=True` across
+  decorators, direct aliased `tool(...)` calls, and
+  `StructuredTool.from_function`; foreign-call and default-`@tool` exclusion;
+  invocation-scoped deduplication; and Stop/SessionEnd cleanup. Run it directly;
+  exits non-zero on any failure.
 - **`test_llm_input_engineering.py`** — contract checks for the public
   `llm-input-engineering` plugin: marketplace registration, narrow skill
   triggers, portable content, working relative links, and the exact

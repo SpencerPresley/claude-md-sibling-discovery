@@ -2,7 +2,7 @@
 
 Audits Python files for [Google-style](https://google.github.io/styleguide/pyguide.html) docstring compliance and fixes the violations — missing summaries, wrong section order, undocumented parameters, malformed `Args`/`Returns`/`Raises` sections.
 
-Types are intentionally omitted from `Args` and `Returns`: they come from the function's annotations, and the IDE already surfaces the signature on hover. A type is only written into the docstring when the parameter or return value has no annotation — matching the Google style guide's own rule.
+Types are intentionally omitted from `Args` and `Returns`: they come from the function's annotations, and the IDE already surfaces the signature on hover. A type is only written into the docstring when the parameter or return value has no annotation — matching the Google style guide's own rule. Parser-enabled LangChain tools are the exception: every parsed `Args` entry requires a signature annotation.
 
 ## How it works
 
@@ -12,7 +12,7 @@ Types are intentionally omitted from `Args` and `Returns`: they come from the fu
   Rather than carry that caveat in every run, the hook injects it only when it is relevant:
 
   1. When the skill is invoked — whether you type `/fix-docstrings` (a `UserPromptExpansion` hook) or the model invokes the skill itself (a `PostToolUse` hook on the `Skill` tool) — a fresh invocation generation is recorded. On `/fix-docstrings <target>`, the hook scans the target up front and lists files whose AST explicitly passes `parse_docstring=True` through a decorator or LangChain tool factory.
-  2. For files the upfront scan cannot see, a `PostToolUse` hook on `Read` applies the same AST check. Aliased and re-exported decorators and `StructuredTool.from_function(..., parse_docstring=True)` are covered; the default `@tool` is intentionally ignored because parsing defaults to false.
+  2. For files the upfront scan cannot see, a `PostToolUse` hook on `Read` applies the same AST check. Aliases imported from LangChain, direct `tool(...)` calls, and `StructuredTool.from_function(..., parse_docstring=True)` are covered; foreign functions with the same keyword and the default `@tool` are intentionally ignored.
   3. Each injected reminder contains the actual continuation-line hazard and the reference path, so it does not depend on an earlier reminder remaining in context. Files are deduplicated within one invocation, and `Stop`/`SessionEnd` disarm the hook afterward.
 
   When no tool enables docstring parsing, the reference is never loaded and the caveat never enters context.
@@ -36,7 +36,7 @@ fix-docstrings/
     references/langchain-tool-docstrings.md  # parser-safe rules (loaded by the hook)
   hooks/
     hooks.json
-    scripts/langchain_tool_context.py     # detects @tool files, injects the reference
+    scripts/langchain_tool_context.py     # detects parser-enabled tools, injects the reference
 ```
 
 ## Requirements

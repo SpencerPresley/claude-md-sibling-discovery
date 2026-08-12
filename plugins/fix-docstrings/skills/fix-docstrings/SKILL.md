@@ -102,7 +102,8 @@ Examples:
    `StructuredTool.from_function(..., parse_docstring=True)`), read the
    [LangChain parsed-tool rules](references/langchain-tool-docstrings.md) before
    editing those docstrings. Do not load that reference for the default
-   `@tool`, whose `parse_docstring` option is false.
+   `@tool`, whose `parse_docstring` option is false. For parsed tools, those rules
+   override the normal fallback of putting a missing signature type in `Args`.
 3. Scan each module, class, function, and method against the Style Reference.
 4. Fix each violation with the minimal change: preserve existing content, add missing sections, infer descriptions from the code. If intent is unclear, ask.
 5. Re-read modified files to confirm the fixes.
