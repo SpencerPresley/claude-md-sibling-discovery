@@ -1,7 +1,7 @@
 {
   "name": "fix-docstrings",
-  "description": "Audits Python files for Google-style docstring compliance and fixes violations. A hook detects LangChain tools that explicitly enable parse_docstring and injects the parser's continuation-line constraint just-in-time.",
-  "version": "0.1.1",
+  "description": "Writes Google-style Python docstrings during development and audits existing docstrings for compliance. A hook detects LangChain tools that explicitly enable parse_docstring and injects the parser's continuation-line constraint just-in-time.",
+  "version": "0.2.0",
   "author": {
     "name": "Spencer Presley"
   }

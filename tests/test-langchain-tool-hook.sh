@@ -146,11 +146,11 @@ import json, sys
 manifest = json.load(open(sys.argv[1]))
 marketplace = json.load(open(sys.argv[2]))
 entry = next(item for item in marketplace["plugins"] if item["name"] == "fix-docstrings")
-assert manifest["version"] == entry["version"] == "0.1.1"
+assert manifest["version"] == entry["version"] == "0.2.0"
 assert "parse_docstring" in manifest["description"]
 assert "parse_docstring" in entry["description"]
 ' "$MANIFEST" "$MARKETPLACE"; then
-  printf '  ok   release manifests expose fix-docstrings 0.1.1\n'; PASS=$((PASS+1))
+  printf '  ok   release manifests expose fix-docstrings 0.2.0\n'; PASS=$((PASS+1))
 else
   printf '  FAIL release manifests are stale or disagree\n'; FAIL=$((FAIL+1))
 fi
