@@ -12,35 +12,84 @@
       "source": "./plugins/claude-md-discovery-extended",
       "description": "Auto-discovers CLAUDE.md/AGENTS.md files from directories outside your project tree, deduplicated by content hash (worktrees, clones, copied templates stay silent), with re-read nudges when loaded instruction files change on disk.",
       "version": "0.4.0",
-      "keywords": ["claude-md", "agents-md", "discovery", "hooks", "auto-discovery", "worktrees", "context-health"]
+      "keywords": [
+        "claude-md",
+        "agents-md",
+        "discovery",
+        "hooks",
+        "auto-discovery",
+        "worktrees",
+        "context-health"
+      ]
     },
     {
       "name": "codex-context-loader",
       "source": "./plugins/codex-context-loader",
       "description": "Dynamically injects detailed Codex plugin context into sessions only when the Codex plugin is enabled.",
       "version": "1.2.0",
-      "keywords": ["codex", "context", "dynamic-loading", "hooks"]
+      "keywords": [
+        "codex",
+        "context",
+        "dynamic-loading",
+        "hooks"
+      ]
     },
     {
       "name": "adversarial-review",
       "source": "./plugins/adversarial-review",
       "description": "An adversarial code/plan reviewer that uses a Codex-style review contract while reviewing only the exact slice you name.",
       "version": "0.1.5",
-      "keywords": ["code-review", "adversarial", "agent", "skill", "plan-review"]
+      "keywords": [
+        "code-review",
+        "adversarial",
+        "agent",
+        "skill",
+        "plan-review"
+      ]
     },
     {
       "name": "fix-docstrings",
       "source": "./plugins/fix-docstrings",
       "description": "Writes Google-style Python docstrings during development and audits existing docstrings for compliance. A hook injects the continuation-line rule just-in-time when a LangChain tool explicitly enables parse_docstring.",
       "version": "0.2.0",
-      "keywords": ["docstrings", "python", "google-style", "langchain", "skill", "hooks"]
+      "keywords": [
+        "docstrings",
+        "python",
+        "google-style",
+        "langchain",
+        "skill",
+        "hooks"
+      ]
     },
     {
       "name": "llm-input-engineering",
       "source": "./plugins/llm-input-engineering",
       "description": "Designs and diagnoses compiled LLM input across prompts, chat templates, tool schemas, structured decoding, prefix caches, retrieval, eviction, and compaction.",
       "version": "0.1.0",
-      "keywords": ["prompt-engineering", "context-engineering", "tools", "structured-output", "chat-template", "prefix-cache", "agents", "skill"]
+      "keywords": [
+        "prompt-engineering",
+        "context-engineering",
+        "tools",
+        "structured-output",
+        "chat-template",
+        "prefix-cache",
+        "agents",
+        "skill"
+      ]
+    },
+    {
+      "name": "pyrefly-lsp",
+      "source": "./plugins/pyrefly-lsp",
+      "description": "Python code intelligence via Pyrefly's language server, run through uvx at a pinned version. Needs only uv on PATH \u2014 no venv setup, no project-declared dependency.",
+      "version": "0.1.0",
+      "keywords": [
+        "lsp",
+        "python",
+        "pyrefly",
+        "django",
+        "type-checking",
+        "code-intelligence"
+      ]
     }
   ]
 }

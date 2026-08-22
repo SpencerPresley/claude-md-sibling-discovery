@@ -48,6 +48,7 @@ npx skills add SpencerPresley/everyday-engineering-skills --list
 | [adversarial-review](plugins/adversarial-review/) | Adversarial code/plan reviewer that uses a Codex-style review contract while reviewing only the exact slice you name. |
 | [fix-docstrings](plugins/fix-docstrings/) | Audits Python files for Google-style docstring compliance and fixes violations. A hook injects the extra continuation-line rule only when a LangChain tool explicitly enables docstring parsing. |
 | [llm-input-engineering](plugins/llm-input-engineering/) | Designs and diagnoses prompts as compiled model input: rendered chat templates, tool/schema placement, structured decoding, prefix reuse, retrieval, and lossy context transitions. |
+| [pyrefly-lsp](plugins/pyrefly-lsp/) | Python code intelligence for Claude Code backed by Pyrefly rather than Pyright — usable on Django, where Pyright can't see FK `<field>_id` accessors or managers. Runs via `uvx` at a pinned version and resolves the project's own interpreter, so it needs only `uv` on PATH. |
 
 ## License
 
