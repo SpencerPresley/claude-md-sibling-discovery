@@ -81,14 +81,16 @@
       "name": "pyrefly-lsp",
       "source": "./plugins/pyrefly-lsp",
       "description": "Python code intelligence via Pyrefly's language server, run through uvx at a pinned version. Needs only uv on PATH \u2014 no venv setup, no project-declared dependency.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "keywords": [
-        "lsp",
-        "python",
-        "pyrefly",
+        "code-intelligence",
         "django",
-        "type-checking",
-        "code-intelligence"
+        "hooks",
+        "lsp",
+        "preflight",
+        "pyrefly",
+        "python",
+        "type-checking"
       ]
     }
   ]

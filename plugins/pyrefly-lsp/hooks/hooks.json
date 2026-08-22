@@ -1,0 +1,17 @@
+{
+  "description": "Preflight for the pyrefly language server. Reports a user-visible error when the server cannot possibly work, so the failure shows up at session start instead of as silently missing code intelligence.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/preflight.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

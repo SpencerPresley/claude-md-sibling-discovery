@@ -56,6 +56,28 @@ commonly gitignored. `use-ignore-files = false` is a valid config key but does
 not restore it; a `.ignore` negation at the working-copy root only partially
 does. Check before trusting reference counts in such a checkout.
 
+## Preflight
+
+A `SessionStart` hook checks the two things that make this plugin fail *quietly*
+and reports them as a transcript error notice (exit 2), which the user sees and
+the model does not — so a warning costs no context:
+
+- `uv` missing from `PATH`. The server can't spawn; Claude Code logs
+  `Executable not found in $PATH` in the `/plugin` Errors tab, which is easy to
+  miss because everything else keeps working.
+- A linked worktree matched by a rule in `.git/info/exclude`. Pyrefly then
+  indexes only the open file, and `findReferences`/`workspaceSymbol` under-report
+  with no error at all.
+
+It uses no subprocesses and costs ~0.4ms over bash's own startup, measured
+across main checkouts, worktrees, and non-git directories.
+
+Note it deliberately does *not* warn when a main checkout's `.gitignore` matches
+a worktree path — that's normal and harmless, because pyrefly resolves the
+worktree's own `.gitignore` relative to the worktree root, where those patterns
+don't match. Only `.git/info/exclude`, which is shared across worktrees, breaks
+indexing.
+
 ## Diagnostics
 
 Claude Code injects diagnostics after edits, capped per file and overall, errors
