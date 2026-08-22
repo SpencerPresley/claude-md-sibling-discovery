@@ -5,10 +5,9 @@ rather than Pyright.
 
 ## Why
 
-On a Django codebase Pyright needs heavy suppression to be usable — it can't see
-FK `<field>_id` accessors, managers, or `DoesNotExist`, so real findings drown in
-false positives. Pyrefly reports what a pyrefly-based type-check gate reports,
-which is the point: diagnostics Claude can't trust are worse than none.
+Use the same checker for Claude Code navigation and a pyrefly-based type-check
+gate. Definitions, references, and diagnostics then come from the same analysis
+engine instead of two tools with different inference behavior.
 
 Pyrefly's LSP implements every operation Claude Code's `Lsp` tool issues:
 definition, references, hover, documentSymbol, workspaceSymbol, implementation,
@@ -18,9 +17,11 @@ and call hierarchy.
 
 `uv` on `PATH`. Nothing else.
 
-The server runs as `uvx pyrefly@1.2.0 lsp`, so pyrefly does **not** need to be a
-declared dependency of the project — uvx fetches and caches the pinned build.
-Pyrefly then discovers the project's own interpreter and site-packages:
+The plugin runs its bundled adapter with `uv run --no-project`, then the adapter
+starts `uvx pyrefly@1.2.0 lsp --indexing-mode lazy-blocking`. Pyrefly does **not**
+need to be a declared project dependency, and starting the adapter never syncs or
+prunes the project's environment. Pyrefly discovers the project's own interpreter
+and site-packages:
 
 ```
 Using interpreter: <project>/.venv/bin/python3
@@ -34,6 +35,21 @@ The alternative — `"command": "uv", "args": ["run", "--quiet", "pyrefly", "lsp
 — uses whatever version the project pins, but fails with `Failed to spawn:
 pyrefly` in any checkout whose venv hasn't synced the group declaring it. Only
 use it if every venv is guaranteed to have pyrefly.
+
+## Complete first results
+
+Claude Code includes the workspace folder in its LSP `initialize` request but
+advertises `capabilities.workspace.workspaceFolders = false`. Pyrefly 1.2.0
+therefore ignores the supplied folder and indexes only the nearest configured
+project. Its default non-blocking indexing mode can also answer a workspace-wide
+request before the index finishes.
+
+The adapter changes only that capability to `true`; the folder URI and every
+other initialization field remain untouched. Blocking indexing then processes
+the `didOpen` that Claude sends before its navigation request, so the first
+`findReferences` answer includes the workspace rather than growing across later
+calls. The protocol regression test also covers Claude's preceding `$/setTrace`
+notification so initialization is still the message that gets rewritten.
 
 ## Monorepos
 

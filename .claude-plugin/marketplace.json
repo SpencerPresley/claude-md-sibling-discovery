@@ -80,8 +80,8 @@
     {
       "name": "pyrefly-lsp",
       "source": "./plugins/pyrefly-lsp",
-      "description": "Python code intelligence via Pyrefly's language server, run through uvx at a pinned version. Needs only uv on PATH \u2014 no venv setup, no project-declared dependency.",
-      "version": "0.2.0",
+      "description": "Python code intelligence via Pyrefly's language server with deterministic workspace indexing. Needs only uv on PATH \u2014 no venv setup, no project-declared dependency.",
+      "version": "0.3.0",
       "keywords": [
         "code-intelligence",
         "django",

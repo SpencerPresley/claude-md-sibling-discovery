@@ -1,16 +1,18 @@
 {
   "name": "pyrefly-lsp",
-  "description": "Python code intelligence via Pyrefly's language server. Runs pyrefly through uvx at a pinned version and resolves the project's own interpreter and site-packages, so it needs no venv setup and no project-declared dependency.",
-  "version": "0.2.0",
+  "description": "Python code intelligence via Pyrefly's language server. Uses deterministic workspace indexing and resolves the project's own interpreter and site-packages, so it needs no venv setup and no project-declared dependency.",
+  "version": "0.3.0",
   "author": {
     "name": "Spencer Presley"
   },
   "lspServers": {
     "pyrefly": {
-      "command": "uvx",
+      "command": "uv",
       "args": [
-        "pyrefly@1.2.0",
-        "lsp"
+        "run",
+        "--no-project",
+        "--quiet",
+        "${CLAUDE_PLUGIN_ROOT}/server/pyrefly_lsp.py"
       ],
       "extensionToLanguage": {
         ".py": "python",
