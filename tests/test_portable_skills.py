@@ -11,6 +11,7 @@ PORTABLE_SKILLS = (
     ROOT / "plugins" / "fix-docstrings" / "skills" / "fix-docstrings",
     ROOT / "plugins" / "llm-input-engineering" / "skills" / "context-engineering",
     ROOT / "plugins" / "llm-input-engineering" / "skills" / "prompt-engineering",
+    ROOT / "plugins" / "using-codex-cli" / "skills" / "using-codex-cli",
 )
 
 
